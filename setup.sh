@@ -60,4 +60,4 @@ source ./venv/bin/activate
 cd ..
 
 
-pip install requirement.txt -r
+pip install -r requirement.txt
