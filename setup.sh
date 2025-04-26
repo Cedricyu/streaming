@@ -50,7 +50,6 @@ echo "[總結] 這台已支援 nginx-rtmp，可以直接用 ffmpeg 推流到 rtm
 
 # ===== 6. 檢查/啟用 venv =====
 echo "==> 檢查/建立 Python venv"
-cd ./stream_video
 if [ ! -d "venv" ]; then
     python3 -m venv venv
     echo "==> 已建立新 venv"
