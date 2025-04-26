@@ -50,14 +50,20 @@ echo "[總結] 這台已支援 nginx-rtmp，可以直接用 ffmpeg 推流到 rtm
 
 # ===== 6. 檢查/啟用 venv =====
 echo "==> 檢查/建立 Python venv"
-if [ ! -d "venv" ]; then
+if [ ! -d "./venv" ]; then
     python3 -m venv venv
     echo "==> 已建立新 venv"
 else
     echo "[SKIP] venv 已存在"
 fi
+
 source ./venv/bin/activate
-cd ..
 
-
-pip install -r requirement.txt
+# ===== 7. 安裝 Python 相依套件 =====
+if [ -f requirements.txt ]; then
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    echo "[OK] Python 相依套件安裝完成"
+else
+    echo "[警告] requirements.txt 不存在，請確認專案路徑"
+fi
