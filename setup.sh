@@ -2,20 +2,30 @@
 
 set -e
 
-# ===== 1. 自動安裝 nginx + rtmp module =====
+# ===== 1. 安裝 nginx + RTMP module（如已安裝自動略過）=====
 echo "==> 安裝 nginx + RTMP module"
-sudo apt update
-sudo apt install -y nginx libnginx-mod-rtmp
+if ! dpkg -l | grep -q libnginx-mod-rtmp; then
+    sudo apt update
+    sudo apt install -y nginx libnginx-mod-rtmp
+else
+    echo "[SKIP] nginx 及 libnginx-mod-rtmp 已安裝"
+fi
 
-# ===== 2. 備份舊 nginx.conf =====
+# ===== 2. 備份舊 nginx.conf（只備份一次）=====
 if [ ! -f /etc/nginx/nginx.conf.bak ]; then
     echo "==> 備份原本的 /etc/nginx/nginx.conf"
     sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak
+else
+    echo "[SKIP] 已備份 nginx.conf"
 fi
 
-# ===== 3. 複製本地 nginx.conf 覆蓋系統設定 =====
-echo "==> 更新 nginx.conf（支援 rtmp + hls + http）"
-sudo cp ./nginx.conf /etc/nginx/nginx.conf
+# ===== 3. 覆蓋 nginx.conf（如果不同才更新）=====
+if ! cmp -s ./nginx.conf /etc/nginx/nginx.conf; then
+    echo "==> 更新 nginx.conf（支援 rtmp + hls + http）"
+    sudo cp ./nginx.conf /etc/nginx/nginx.conf
+else
+    echo "[SKIP] /etc/nginx/nginx.conf 已是最新"
+fi
 
 # ===== 4. 檢查 config、重啟 nginx =====
 sudo nginx -t
@@ -38,20 +48,44 @@ fi
 
 echo "[總結] 這台已支援 nginx-rtmp，可以直接用 ffmpeg 推流到 rtmp://localhost/live/stream"
 
-# ===== 6. 啟用 venv =====
-echo "==> 啟用 Python venv"
-source ./stream_video/venv/bin/activate
+# ===== 6. 檢查/啟用 venv =====
+echo "==> 檢查/建立 Python venv"
+cd ./stream_video
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+    echo "==> 已建立新 venv"
+else
+    echo "[SKIP] venv 已存在"
+fi
+source ./venv/bin/activate
+cd ..
 
 # ===== 7. 啟動 stream.py =====
-cd ./stream
-nohup python3 stream.py > ../stream.log 2>&1 &
-STREAM_PID=$!
-echo "stream.py 啟動，PID: $STREAM_PID，log: ./stream.log"
+if [ ! -f "stream.log" ]; then
+    touch stream.log
+fi
+if pgrep -f "python3 stream.py" > /dev/null; then
+    echo "[SKIP] stream.py 已經在跑"
+else
+    cd ./stream
+    nohup python3 stream.py > ../stream.log 2>&1 &
+    STREAM_PID=$!
+    cd ..
+    echo "stream.py 啟動，PID: $STREAM_PID，log: ./stream.log"
+fi
 
 # ===== 8. 啟動 musetalk.py =====
-cd ../video
-nohup python3 musetalk.py > ../musetalk.log 2>&1 &
-MUSE_PID=$!
-echo "musetalk.py 啟動，PID: $MUSE_PID，log: ./musetalk.log"
+if [ ! -f "musetalk.log" ]; then
+    touch musetalk.log
+fi
+if pgrep -f "python3 musetalk.py" > /dev/null; then
+    echo "[SKIP] musetalk.py 已經在跑"
+else
+    cd ./video
+    nohup python3 musetalk.py > ../musetalk.log 2>&1 &
+    MUSE_PID=$!
+    cd ..
+    echo "musetalk.py 啟動，PID: $MUSE_PID，log: ./musetalk.log"
+fi
 
 echo "所有服務已啟動，可以 tail -f stream.log musetalk.log 來看 log"
