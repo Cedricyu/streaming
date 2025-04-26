@@ -59,32 +59,5 @@ fi
 source ./venv/bin/activate
 cd ..
 
-# ===== 7. 啟動 stream.py =====
-if [ ! -f "stream.log" ]; then
-    touch stream.log
-fi
-if pgrep -f "python3 stream.py" > /dev/null; then
-    echo "[SKIP] stream.py 已經在跑"
-else
-    cd ./stream
-    nohup python3 stream.py > ../stream.log 2>&1 &
-    STREAM_PID=$!
-    cd ..
-    echo "stream.py 啟動，PID: $STREAM_PID，log: ./stream.log"
-fi
 
-# ===== 8. 啟動 musetalk.py =====
-if [ ! -f "musetalk.log" ]; then
-    touch musetalk.log
-fi
-if pgrep -f "python3 musetalk.py" > /dev/null; then
-    echo "[SKIP] musetalk.py 已經在跑"
-else
-    cd ./video
-    nohup python3 musetalk.py > ../musetalk.log 2>&1 &
-    MUSE_PID=$!
-    cd ..
-    echo "musetalk.py 啟動，PID: $MUSE_PID，log: ./musetalk.log"
-fi
-
-echo "所有服務已啟動，可以 tail -f stream.log musetalk.log 來看 log"
+pip install requirement.txt -r
