@@ -1,9 +1,10 @@
-import subprocess
 import os
 import time
+import signal
 from flask import Flask, request, jsonify
-from threading import Thread
+from threading import Thread, Event
 from queue import Queue
+import subprocess
 import requests
 
 app = Flask(__name__)
@@ -14,22 +15,8 @@ SERVICE_B_URL = "http://localhost:8081/video/get?id={vid}"
 SERVICE_B_LIST = "http://localhost:8081/video/list_pending"
 POLL_INTERVAL = 10
 
-def start_nginx_rtmp():
-    # 路徑視你的 nginx 裝法而定
-    nginx_conf_path = os.path.abspath('./nginx-rtmp.conf')
-    print(f"啟動 nginx-rtmp, conf={nginx_conf_path}")
-    return subprocess.Popen(['nginx', '-c', nginx_conf_path])
-
-def start_hls_ffmpeg():
-    print("啟動 ffmpeg HLS producer")
-    return subprocess.Popen([
-        'ffmpeg', '-hide_banner', '-loglevel', 'error',
-        '-i', 'rtmp://localhost/live/stream',
-        '-c:v', 'libx264', '-c:a', 'aac',
-        '-f', 'hls',
-        '-hls_time', '4', '-hls_list_size', '5', '-hls_flags', 'delete_segments',
-        os.path.join(TMP_DIR, "index.m3u8")
-    ])
+# 用 event 控制 thread 結束
+exit_event = Event()
 
 def push_mp4_to_rtmp(mp4_path):
     cmd = [
@@ -40,8 +27,11 @@ def push_mp4_to_rtmp(mp4_path):
     subprocess.run(cmd)
 
 def transcode_worker():
-    while True:
-        video_id = transcode_queue.get()
+    while not exit_event.is_set():
+        try:
+            video_id = transcode_queue.get(timeout=1)
+        except Exception:
+            continue  # 1秒超時繼續檢查是否退出
         if video_id is None:
             break
         mp4_path = os.path.join(TMP_DIR, f"{video_id}")
@@ -62,7 +52,7 @@ def transcode_worker():
         transcode_queue.task_done()
 
 def poll_new_videos():
-    while True:
+    while not exit_event.is_set():
         try:
             resp = requests.get(SERVICE_B_LIST)
             if resp.status_code == 200:
@@ -71,7 +61,10 @@ def poll_new_videos():
                     transcode_queue.put(vid)
         except Exception as e:
             print(f"Polling 錯誤: {e}")
-        time.sleep(POLL_INTERVAL)
+        for _ in range(POLL_INTERVAL * 2):  # 0.5s * 20 = 10秒
+            if exit_event.is_set():
+                break
+            time.sleep(0.5)
 
 @app.route('/submit', methods=['POST'])
 def submit_mp4():
@@ -81,14 +74,23 @@ def submit_mp4():
     print(f"[API] 手動加入 queue: {video_id}")
     return jsonify({"status": "queued", "video_id": video_id})
 
+def signal_handler(sig, frame):
+    print("\n[!] 收到結束訊號, 正在退出...")
+    exit_event.set()
+    transcode_queue.put(None)
+    time.sleep(0.5)  # 留一點時間給 thread 收到 signal
+    os._exit(0)  # <--- 強制結束整個 python process
+
 if __name__ == "__main__":
-    print("=== 啟動 RTMP nginx + HLS producer + Flask ===")
-    nginx_proc = start_nginx_rtmp()
-    # 確認 nginx 啟動成功再往下
-    time.sleep(1)
-    hls_proc = start_hls_ffmpeg()
-    worker = Thread(target=transcode_worker, daemon=True)
+    print("=== Flask 啟動，負責 mp4 推流到 RTMP，不管理 nginx ===")
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    worker = Thread(target=transcode_worker)
+    poller = Thread(target=poll_new_videos)
     worker.start()
-    poller = Thread(target=poll_new_videos, daemon=True)
     poller.start()
-    app.run(port=8080, debug=True)
+    app.run(port=8080, debug=True, use_reloader=False)
+    # Flask 停止後, 等待 thread 結束
+    worker.join()
+    poller.join()
+    print("已安全退出所有執行緒。")
