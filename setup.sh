@@ -29,7 +29,7 @@ else
     exit 1
 fi
 
-if sudo netstat -plnt | grep -q ':1935'; then
+if sudo ss -plnt | grep -q ':1935'; then
     echo "[OK] nginx 已啟動 1935 RTMP port"
 else
     echo "[警告] nginx 尚未監聽 1935 port，請檢查 nginx 是否啟動"
