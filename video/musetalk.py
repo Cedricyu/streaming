@@ -18,17 +18,11 @@ def get_video():
 
 @app.route("/video/list_pending")
 def list_pending():
-    files = [f for f in os.listdir(VIDEO_FOLDER) if f.endswith(".mp4")]
-    pending = []
-    for f in files:
-        # 如果是 ai_stream.mp4，用 random 假裝有時還沒好
-        if f == "ai_stream.mp4":
-            # 50% 機率假裝還沒好
-            if random.random() < 0.5:
-                print(f"[DEBUG] pretend {f} is not ready yet (pending)")
-                continue
-        pending.append(f)
-    return jsonify({"videos": pending})
+    if random.random() < 0.5:
+        result = ["ai_stream.mp4"]
+    else:
+        result = ["ai_wait.mp4"]
+    return jsonify({"videos": result})
 
 if __name__ == "__main__":
     app.run(port=8081, debug=True)
